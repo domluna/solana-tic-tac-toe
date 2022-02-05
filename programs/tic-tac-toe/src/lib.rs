@@ -3,8 +3,7 @@ use anchor_lang::prelude::*;
 use num_derive::*;
 use num_traits::*;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
-// declare_id!("H5dHHXFBR4VpzR5YREHHX4cf4LAPfiK1xWZKsrghs7gx");
+declare_id!("H5dHHXFBR4VpzR5YREHHX4cf4LAPfiK1xWZKsrghs7gx");
 
 #[program]
 pub mod tic_tac_toe {
@@ -20,12 +19,7 @@ pub mod tic_tac_toe {
     pub fn play(ctx: Context<Play>, tile: Tile) -> ProgramResult {
         let game = &mut ctx.accounts.game;
 
-        require!(
-            game.current_player() == ctx.accounts.player.key(),
-            TicTactoeError::NotPlayersTurn
-        );
-
-        game.play(&tile)
+        game.play(ctx.accounts.player.key(), &tile)
     }
 }
 
@@ -45,9 +39,14 @@ impl Game {
         self.players[self.turn as usize]
     }
 
-    pub fn play(&mut self, tile: &Tile) -> ProgramResult {
+    pub fn play(&mut self, player: Pubkey, tile: &Tile) -> ProgramResult {
         let row = tile.row as usize;
         let col = tile.col as usize;
+
+        require!(
+            self.current_player() == player,
+            TicTactoeError::NotPlayersTurn
+        );
 
         require!(
             self.state == GameState::Active,
@@ -88,7 +87,7 @@ impl Game {
     }
 
     pub fn switch_turn(&mut self) {
-        self.turn = self.turn + 1 % 2;
+        self.turn = (self.turn + 1) % 2;
     }
 
     pub fn players_sign(&self) -> Sign {
@@ -106,10 +105,10 @@ impl Game {
         }
 
         // column victory
-        for r in  0..2 {
-            if self.board[r][0].is_some() && self.board[r][0].unwrap() == sign &&
-                self.board[r][1].is_some() && self.board[r][1].unwrap() == sign &&
-                self.board[r][2].is_some() && self.board[r][2].unwrap() == sign {
+        for c in 0..3 {
+            if self.board[0][c].is_some() && self.board[0][c].unwrap() == sign &&
+                self.board[1][c].is_some() && self.board[1][c].unwrap() == sign &&
+                self.board[2][c].is_some() && self.board[2][c].unwrap() == sign {
                 return true;
             }
         }
@@ -136,7 +135,7 @@ impl Game {
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, Debug)]
 pub enum GameState {
     Active,
     Tie,
@@ -150,7 +149,7 @@ impl Default for GameState {
 }
 
 
-#[derive(AnchorSerialize, AnchorDeserialize, FromPrimitive, ToPrimitive, Copy, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, FromPrimitive, ToPrimitive, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Sign {
     X,
     O,
@@ -192,7 +191,164 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn play_a_game() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let mut g = Game {
+            players: [pk1, pk2],
+            turn: 0,
+            board: [[None; 3]; 3],
+            state: GameState::Active,
+        };
+
+        assert_eq!(g.current_player(), pk1);
+        assert_eq!(g.players_sign(), Sign::X);
+
+        g.play(pk1, &Tile { row: 0, col: 0 }).unwrap();
+        let board = [[Some(Sign::X), None, None],
+                    [None, None, None],
+                    [None, None, None]];
+        assert_eq!(g.board, board);
+
+        // wrong player's turn
+        let res = g.play(pk1, &Tile { row: 1, col: 1 });
+        assert!(res.is_err());
+
+        g.play(pk2, &Tile { row: 1, col: 1 }).unwrap();
+        let board = [[Some(Sign::X), None, None],
+                    [None, Some(Sign::O), None],
+                    [None, None, None]];
+        assert_eq!(g.board, board);
+
+        g.play(pk1, &Tile { row: 0, col: 1 }).unwrap();
+        let board = [[Some(Sign::X), Some(Sign::X), None],
+                    [None, Some(Sign::O), None],
+                    [None, None, None]];
+        assert_eq!(g.board, board);
+
+        g.play(pk2, &Tile { row: 2, col: 2 }).unwrap();
+        let board = [[Some(Sign::X), Some(Sign::X), None],
+                    [None, Some(Sign::O), None],
+                    [None, None, Some(Sign::O)]];
+        assert_eq!(g.board, board);
+
+        g.play(pk1, &Tile { row: 0, col: 2 }).unwrap();
+        let board = [[Some(Sign::X), Some(Sign::X), Some(Sign::X)],
+                    [None, Some(Sign::O), None],
+                    [None, None, Some(Sign::O)]];
+        assert_eq!(g.board, board);
+
+        // game is over, player 1 won
+        let res = g.play(pk2, &Tile { row: 1, col: 2 });
+        assert!(res.is_err());
+
+        assert_eq!(g.state, GameState::Won { winner: pk1 });
+    }
+
+    #[test]
+    fn win_condition_rows() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let mut g = Game {
+            players: [pk1, pk2],
+            turn: 0,
+            board: [[None; 3]; 3],
+            state: GameState::Active,
+        };
+        g.board = [
+            [Some(Sign::X), Some(Sign::X), Some(Sign::X)],
+            [Some(Sign::O), Some(Sign::O), None],
+            [None, None, None],
+        ];
+        assert!(g.is_win_condition(Sign::X));
+
+        g.board = [
+            [Some(Sign::O), Some(Sign::O), None],
+            [Some(Sign::X), Some(Sign::X), Some(Sign::X)],
+            [None, None, None],
+        ];
+        assert!(g.is_win_condition(Sign::X));
+
+        g.board = [
+            [Some(Sign::O), Some(Sign::O), None],
+            [None, None, None],
+            [Some(Sign::X), Some(Sign::X), Some(Sign::X)],
+        ];
+        assert!(g.is_win_condition(Sign::X));
+    }
+
+    #[test]
+    fn win_condition_columns() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let mut g = Game {
+            players: [pk1, pk2],
+            turn: 0,
+            board: [[None; 3]; 3],
+            state: GameState::Active,
+        };
+        g.board = [
+            [Some(Sign::X), Some(Sign::O), Some(Sign::O)],
+            [Some(Sign::X), Some(Sign::O), None],
+            [Some(Sign::X), None, None],
+        ];
+        assert!(g.is_win_condition(Sign::X));
+
+        g.board = [
+            [Some(Sign::X), Some(Sign::O), Some(Sign::O)],
+            [Some(Sign::X), Some(Sign::O), None],
+            [None, Some(Sign::O), None],
+        ];
+        assert!(g.is_win_condition(Sign::O));
+
+        g.board = [
+            [Some(Sign::X), Some(Sign::O), Some(Sign::O)],
+            [Some(Sign::X), None,          Some(Sign::O)],
+            [None,          None,          Some(Sign::O)],
+        ];
+        assert!(g.is_win_condition(Sign::O));
+    }
+
+    #[test]
+    fn win_condition_diagonals() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let mut g = Game {
+            players: [pk1, pk2],
+            turn: 0,
+            board: [[None; 3]; 3],
+            state: GameState::Active,
+        };
+        g.board = [
+            [Some(Sign::X), Some(Sign::X), Some(Sign::O)],
+            [Some(Sign::O), Some(Sign::X), None],
+            [None, None, Some(Sign::X)],
+        ];
+        assert!(g.is_win_condition(Sign::X));
+
+        g.board = [
+            [None, Some(Sign::X), Some(Sign::O)],
+            [None, Some(Sign::O), None],
+            [Some(Sign::O), None, Some(Sign::X)],
+        ];
+        assert!(g.is_win_condition(Sign::O));
+    }
+
+    #[test]
+    fn tie_condition() {
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
+        let mut g = Game {
+            players: [pk1, pk2],
+            turn: 0,
+            board: [[None; 3]; 3],
+            state: GameState::Active,
+        };
+        g.board = [
+            [Some(Sign::X), Some(Sign::X), Some(Sign::O)],
+            [Some(Sign::O), Some(Sign::X), Some(Sign::X)],
+            [Some(Sign::X), Some(Sign::O), Some(Sign::O)],
+        ];
+        assert!(g.is_tie_condition());
     }
 }

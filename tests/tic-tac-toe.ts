@@ -14,7 +14,9 @@ async function play(program, game, player,
     signers: player instanceof (anchor.Wallet as any) ? [] : [player]
   });
 
+
   const gameState = await program.account.game.fetch(game);
+  // console.log('abc', gameState.board);
   expect(gameState.turn).to.equal(expectedTurn);
   expect(gameState.state).to.eql(expectedGameState);
   expect(gameState.board)
@@ -90,6 +92,20 @@ describe('tic-tac-toe', () => {
         [
           [{x:{}},null,null],
           [null,null,null],
+          [null,null,null]
+        ]
+      );
+
+      await play(
+        program,
+        gameKeypair.publicKey,
+        playerTwo,
+        {row: 1, column: 2},
+        0,
+        { active: {}, },
+        [
+          [{x:{}},null,null],
+          [null,{o:{}},null],
           [null,null,null]
         ]
       );
