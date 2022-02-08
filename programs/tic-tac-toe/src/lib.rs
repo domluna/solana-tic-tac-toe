@@ -18,7 +18,6 @@ pub mod tic_tac_toe {
 
     pub fn play(ctx: Context<Play>, tile: Tile) -> ProgramResult {
         let game = &mut ctx.accounts.game;
-
         game.play(ctx.accounts.player.key(), &tile)
     }
 }

@@ -16,7 +16,6 @@ async function play(program, game, player,
 
 
   const gameState = await program.account.game.fetch(game);
-  // console.log('abc', gameState.board);
   expect(gameState.turn).to.equal(expectedTurn);
   expect(gameState.state).to.eql(expectedGameState);
   expect(gameState.board)
@@ -86,7 +85,7 @@ describe('tic-tac-toe', () => {
         program,
         gameKeypair.publicKey,
         playerOne,
-        {row: 0, column: 0},
+        {row: 0, col: 0},
         1,
         { active: {}, },
         [
@@ -100,12 +99,54 @@ describe('tic-tac-toe', () => {
         program,
         gameKeypair.publicKey,
         playerTwo,
-        {row: 1, column: 2},
+        {row: 1, col: 1},
         0,
         { active: {}, },
         [
           [{x:{}},null,null],
           [null,{o:{}},null],
+          [null,null,null]
+        ]
+      );
+
+      await play(
+        program,
+        gameKeypair.publicKey,
+        playerOne,
+        {row: 0, col: 2},
+        1,
+        { active: {}, },
+        [
+          [{x:{}},null,{x:{}}],
+          [null,{o:{}},null],
+          [null,null,null]
+        ]
+      );
+
+      await play(
+        program,
+        gameKeypair.publicKey,
+        playerTwo,
+        {row: 1, col: 2},
+        0,
+        { active: {}, },
+        [
+          [{x:{}},null,{x:{}}],
+          [null,{o:{}},{o:{}}],
+          [null,null,null]
+        ]
+      );
+
+      await play(
+        program,
+        gameKeypair.publicKey,
+        playerOne,
+        {row: 0, col: 1},
+        0, // win
+        { won: { winner: { playerOne } }},
+        [
+          [{x:{}},{x:{}},{x:{}}],
+          [null,{o:{}},{o:{}}],
           [null,null,null]
         ]
       );
